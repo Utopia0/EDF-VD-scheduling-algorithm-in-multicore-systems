@@ -8,7 +8,7 @@ using namespace std;
 
 // Constructor function
 MulticoreScheduler::MulticoreScheduler(TaskSet& sys)
-    : taskset(sys), sysCriticalityLevel(1), currentTime(0),  gen(rd()), latestDeadlineCoreID(NUM_CORES - 1), latestDeadline(0){
+    : taskset(sys), sysCriticalityLevel(1), currentTime(0), latestDeadlineCoreID(NUM_CORES - 1), latestDeadline(0){
     int id = 0;
     for (auto& core : coreList){
         core.coreID = id;
@@ -18,7 +18,7 @@ MulticoreScheduler::MulticoreScheduler(TaskSet& sys)
 
 
 // Main scheduling function
-void MulticoreScheduler::EDF_VD_Schedule(int simulationDuration) {
+void MulticoreScheduler::edf_vd_schedule(int simulationDuration) {
     cout << "\n***********************************************" << endl;
     cout << "EDF-VD Multicore Scheduling Staring" << endl;
     cout << "***********************************************\n" << endl;
@@ -26,26 +26,31 @@ void MulticoreScheduler::EDF_VD_Schedule(int simulationDuration) {
     while (currentTime <= simulationDuration)
     {
         cout << "Time " << currentTime << ":" << endl;
-        GenerateJobs();
+        generate_jobs();
+        bool isSystemIdle = readyQueue.empty();
         for (auto& core : coreList){
-            ExcuteJobs(core);
+            excute_jobs(core);
+            isSystemIdle = isSystemIdle && !core.isBusy;
         }
-        HandleJobPreemption();
-        PrintAllCoresStatus();
+        if (isSystemIdle && sysCriticalityLevel == 2) {
+            system_mode_degrade();
+        }
+        handle_job_preemption();
+        print_all_cores_status();
         currentTime++;
     }
 }
 
 
 // Add job to readyQueue
-int MulticoreScheduler::AddJobToQueue(const Job& job) {
+int MulticoreScheduler::add_job_to_queue(const Job& job) {
     readyQueue.push(job);
     return StatusCode::OK;
 }
 
 
 // Create job object
-Job MulticoreScheduler::CreateJob(Task& task, int releaseTime) {
+Job MulticoreScheduler::create_job(Task& task, int releaseTime) {
     // A new job is created, so taskNumber + 1
     task.taskNumber = task.taskNumber + 1;
 
@@ -58,19 +63,17 @@ Job MulticoreScheduler::CreateJob(Task& task, int releaseTime) {
         // HI level tasks in LO mode
         schedulingDeadline = static_cast<int>(ceil(task.virtualDeadline));    // Round up, but prioritize scheduling during scheduling
 
-        double lowerBound = min(0.7 * task.wcet[0], 0.5 * task.wcet[1]);
+        double lowerBound = min(0.75 * task.wcet[0], 0.75 * task.wcet[1]);
         double upperBound = task.wcet[1];
-        uniform_real_distribution<> dis(lowerBound, upperBound);
-        executionTime = dis(gen);
+        executionTime = uniform_distribution_func(lowerBound, upperBound);
     }
     else {
         // LO level tasks , or HI level tasks in HI taskset
         schedulingDeadline = task.deadline;                 // For LO task, do not modify the deadline
 
-        double lowerBound = 0.5 * task.wcet[task.criticalityLevel - 1];
+        double lowerBound = 0.75 * task.wcet[task.criticalityLevel - 1];
         double upperBound = task.wcet[task.criticalityLevel - 1];
-        uniform_real_distribution<> dis(lowerBound, upperBound);
-        executionTime = dis(gen);
+        executionTime = uniform_distribution_func(lowerBound, upperBound);
     }
 
     return {
@@ -101,15 +104,15 @@ Job MulticoreScheduler::CreateJob(Task& task, int releaseTime) {
 }
 
 // Generate Jobs
-void MulticoreScheduler::GenerateJobs() {
+void MulticoreScheduler::generate_jobs() {
     for (auto& task : taskset.tasklist) {
         // Discard LO task in HI mode
         if (sysCriticalityLevel == 2 && task.criticalityLevel == 1) continue;
 
         if (task.isPeriodic && (currentTime - task.releaseTime) % task.period == 0
             || !task.isPeriodic && currentTime == task.releaseTime) {
-            Job newJob = CreateJob(task, currentTime);
-            AddJobToQueue(newJob);
+            Job newJob = create_job(task, currentTime);
+            add_job_to_queue(newJob);
             // readyQueue.push(newJob);
 
             // Print info
@@ -126,9 +129,9 @@ void MulticoreScheduler::GenerateJobs() {
 }
 
 
-int MulticoreScheduler::AssignJobToCore(Core& core, const Job& job) {
+int MulticoreScheduler::assign_job_to_core(Core& core, const Job& job) {
     if (core.isBusy) {
-        cerr << "[ERROR] Core " << core.coreID << "is busy. AssignJobToCore Failed" << endl;
+        cerr << "[ERROR] Core " << core.coreID << "is busy. assign_job_to_core Failed" << endl;
         return StatusCode::ERROR;
     }
     else{
@@ -141,31 +144,28 @@ int MulticoreScheduler::AssignJobToCore(Core& core, const Job& job) {
     return StatusCode::ERROR;
 }
 
-int MulticoreScheduler::AssignJobToCore(Core& core) {
+int MulticoreScheduler::assign_job_to_core(Core& core) {
     if (readyQueue.empty()){
         cout << "ERROR: readyQueue is empty." << endl;
         return StatusCode::ERROR;
     }
     else{
-        
-        AssignJobToCore(core, readyQueue.top());
+        assign_job_to_core(core, readyQueue.top());
         readyQueue.pop();
-        
     }
-    
     return StatusCode::OK;
 }
 
 
-int MulticoreScheduler::RemoveJobFromCore(Core& core, bool isFinished) {
+int MulticoreScheduler::remove_job_from_core(Core& core, bool isFinished) {
     if (!core.isBusy) {
-        cerr << "[ERROR] Core " << core.coreID << "is idle. RemoveJobFromCore Failed" << endl;
+        cerr << "[ERROR] Core " << core.coreID << "is idle. remove_job_from_core Failed" << endl;
         return StatusCode::ERROR;
     }
     else{
         // If the job isn't finished, push it back to readyQueue;
         if (!isFinished) {
-            AddJobToQueue(core.currentJob);
+            add_job_to_queue(core.currentJob);
             //cout << "///////////////////////////////////////////////////////////////////////" << endl;
             //cout << core.currentJob.taskID << "  core.currentJob  " << core.currentJob.executedTime << endl;
             //cout << readyQueue.top().taskID << "  readyQueue.top()  " << readyQueue.top().executedTime << endl;
@@ -180,23 +180,30 @@ int MulticoreScheduler::RemoveJobFromCore(Core& core, bool isFinished) {
 }
 
 
-int MulticoreScheduler::ExcuteJobs(Core& core) {
+int MulticoreScheduler::excute_jobs(Core& core) {
     if (core.isBusy) {
         core.currentJob.executedTime++;
-        // If job complete
+        // If job completes
         if (core.currentJob.executedTime >= core.currentJob.executionTime) {
             cout << "Core " << core.coreID << " [Task " << core.currentJob.taskID << " Job" << core.currentJob.jobID
                 << "] completed, executionTime is " << core.currentJob.executionTime << endl;
-            RemoveJobFromCore(core, true);
+            remove_job_from_core(core, true);
         }
-        // Mode switch
-        else if (core.currentJob.executedTime >= core.currentJob.wcet_LO && core.currentJob.criticalityLevel == 2 && sysCriticalityLevel == 1) {
-            HandleModeSwitch();
+        else if (currentTime >= core.currentJob.schedulingDeadline && !core.currentJob.useVirtualDeadline) {
+            // This job misses the deadline
+            overdue_job_process(core.currentJob);
+            remove_job_from_core(core, true);
         }
+        // Mode upgrade
+        else if (core.currentJob.executedTime >= core.currentJob.wcet_LO && 
+                core.currentJob.criticalityLevel == 2 && sysCriticalityLevel == 1) {
+            system_mode_upgrade();
+        }
+        check_missed_deadlines();
     }
     // Choose a new job
     if (!core.isBusy && !readyQueue.empty()) {
-        AssignJobToCore(core);
+        assign_job_to_core(core);
         cout << "Core " << core.coreID << ": Start executing [Task";
         if (!core.currentJob.useVirtualDeadline) {
             cout << core.currentJob.taskID << " Job" << core.currentJob.jobID << "] (Deadline @ "
@@ -208,30 +215,36 @@ int MulticoreScheduler::ExcuteJobs(Core& core) {
         }
     }
 
-    UpdateDeadlineInfo();
+    update_deadline_info();
 
     return StatusCode::OK;
 }
 
-
-
-void MulticoreScheduler::CheckMissedDeadlines() {
-    priority_queue<Job> tempQueue = readyQueue;
-    while (!tempQueue.empty()) {
-        const Job& job = tempQueue.top();
-        if (currentTime > job.schedulingDeadline) {
-            cerr << "WARNING: [Task" << job.taskID << " Job" << job.jobID << "] missed deadline at "
-                << job.schedulingDeadline << endl;
-            if (job.criticalityLevel == 2) {
-                cerr << "\nERROR: HI level job missed deadline\n" << endl;
-            }
-        }
-        tempQueue.pop();
+// If a job has missed the deadline, print warning
+void MulticoreScheduler::overdue_job_process(const Job& job) {
+    cerr << "WARNING: [Task" << job.taskID << " Job" << job.jobID << "] missed deadline at "
+        << job.schedulingDeadline << endl;
+    if (job.criticalityLevel == 2) {
+        cerr << "\nERROR: HI level job missed deadline\n" << endl;
+        cin.get();
     }
 }
 
-// Switch the processing mode to HI critical level
-void MulticoreScheduler::HandleModeSwitch() {
+
+// Check if any jobs in the readyQueue have missed the deadline
+void MulticoreScheduler::check_missed_deadlines() {
+    while (!readyQueue.empty()) {
+        const Job& job = readyQueue.top();
+        if (currentTime > job.schedulingDeadline && !job.useVirtualDeadline) {
+            overdue_job_process(job);
+            readyQueue.pop();
+        }
+        else return;
+    }
+}
+
+// Switch the processing mode to HI criticality level
+void MulticoreScheduler::system_mode_upgrade() {
     cout << "\n=== Switching to HI-Criticality Mode at Time " << currentTime << " ===\n";
     sysCriticalityLevel = 2;
 
@@ -255,8 +268,18 @@ void MulticoreScheduler::HandleModeSwitch() {
     readyQueue = newQueue;
 }
 
+
+
+// Switch the processing mode to LO criticality level
+void MulticoreScheduler::system_mode_degrade() {
+    cout << "\n=== Switching to LO-Criticality Mode at Time " << currentTime << " ===\n";
+    sysCriticalityLevel = 1;
+}
+
+
+
 // Update 2 infos: latestDeadline and latestDeadlineCoreID
-int MulticoreScheduler::UpdateDeadlineInfo() {
+int MulticoreScheduler::update_deadline_info() {
     int id = 0, latestDDL = 0;
          
     for (auto& core : coreList){
@@ -272,7 +295,7 @@ int MulticoreScheduler::UpdateDeadlineInfo() {
 }
 
 // Dealing with the task preemption, swapping the current job with the queue header job
-int MulticoreScheduler::HandleJobPreemption() {
+int MulticoreScheduler::handle_job_preemption() {
     int preemptionTimes = 0;
     while (!readyQueue.empty() && readyQueue.top().schedulingDeadline < latestDeadline ) {
         if (preemptionTimes > NUM_CORES) {
@@ -280,11 +303,11 @@ int MulticoreScheduler::HandleJobPreemption() {
             return StatusCode::ERROR;
         }
         else{
-            RemoveJobFromCore(coreList[latestDeadlineCoreID], false);
-            AssignJobToCore(coreList[latestDeadlineCoreID], readyQueue.top());
+            remove_job_from_core(coreList[latestDeadlineCoreID], false);
+            assign_job_to_core(coreList[latestDeadlineCoreID], readyQueue.top());
             readyQueue.pop();
             cout << readyQueue.top().taskID << "  readyQueue.top()  " << readyQueue.top().executedTime << endl;
-            UpdateDeadlineInfo();
+            update_deadline_info();
             preemptionTimes++;
 
             // output and print  
@@ -309,7 +332,7 @@ int MulticoreScheduler::HandleJobPreemption() {
 }
 
 // Print the jobs executed by each core
-void MulticoreScheduler::PrintAllCoresStatus() {
+void MulticoreScheduler::print_all_cores_status() {
     // cout << "Time " << currentTime << ":" << endl;
     cout << "latestDDL: " << latestDeadline << ", coreID: " << latestDeadlineCoreID << endl;
     for (auto& core: coreList){

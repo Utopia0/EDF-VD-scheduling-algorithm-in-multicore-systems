@@ -7,13 +7,13 @@ using namespace std;
 // Constructor function
 Task::Task(int id, int level, bool periodic, int r, int p, int d, const vector<int>& wcet_values)
     : taskID(id), criticalityLevel(level), isPeriodic(periodic), releaseTime(r), period(p), deadline(d), wcet(wcet_values), taskNumber(0) {
-    ComputeUtilization();  // Calculate utilization during initialization
-    // PrintTaskInfo();
+    compute_utilization();  // Calculate utilization during initialization
+    print_task_info();
 }
 
 
 // Calculate utilization rates at different critical levels
-void Task::ComputeUtilization() {
+void Task::compute_utilization() {
     utilization.clear();    // Clear the original data
     for (int i : wcet) {
         utilization.push_back(static_cast<double>(i) / deadline);
@@ -21,7 +21,7 @@ void Task::ComputeUtilization() {
 }
 
 // Print task information
-void Task::PrintTaskInfo() {
+void Task::print_task_info() {
     cout << "Task " << taskID << " (Criticality Level: " << criticalityLevel << ")\n";
     cout << "  Period: " << period << ", Deadline: " << deadline << "\n";
     cout << "  WCET: ";
@@ -36,12 +36,13 @@ void Task::PrintTaskInfo() {
 }
 
 // Constructor function
-TaskSet::TaskSet(vector<Task>& list): tasklist(list) {
-    ComputeUtilization();
-    ComputeVirtualDeadline();
+TaskSet::TaskSet(const vector<Task>& list): tasklist(list) {
+    std::cout << "tasklist size: " << tasklist.size() << std::endl;
+    compute_utilization();
+    compute_virtual_deadline();
 }
 
-void TaskSet::ComputeUtilization() {
+void TaskSet::compute_utilization() {
     u_lo_lo = 0;
     u_hi_lo = 0;
     u_hi_hi = 0;
@@ -61,6 +62,7 @@ void TaskSet::ComputeUtilization() {
 
     cout << "u_lo_lo = " << u_lo_lo
         << "\nu_hi_lo = " << u_hi_lo
+        << "\nu_lo = " << u_lo_lo + u_hi_lo
         << "\nu_hi_hi = " << u_hi_hi << endl;
 
     scaleFactor = max(u_hi_lo / ((NUM_CORES + 1.0) / 2.0 - u_lo_lo), u_hi_lo_max);
@@ -85,7 +87,7 @@ void TaskSet::ComputeUtilization() {
 }
 
 // compute virtual deadline according to scaleFactor
-void TaskSet::ComputeVirtualDeadline() {
+void TaskSet::compute_virtual_deadline() {
     for (auto& task : tasklist) {
         if (task.criticalityLevel == 2) {
             task.virtualDeadline = scaleFactor * task.deadline;

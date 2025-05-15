@@ -57,14 +57,13 @@ public:
 
     Task(int id, int level, bool periodic, int r, int p, int d, const std::vector<int>& wcet_values);
 
-private:
-    void ComputeUtilization();
-    void PrintTaskInfo();
+    void compute_utilization();
+    void print_task_info();
 };
 
 class TaskSet {
 public:
-    std::vector<Task>& tasklist;
+    std::vector<Task> tasklist;
 
     double u_lo_lo;         // The total utilization of all LO tasks in LO level 
     double u_hi_lo;         // The total utilization of all HI tasks in LO level 
@@ -72,11 +71,11 @@ public:
     double u_hi_lo_max;     // The maximum utilization of HI task in LO level
     double scaleFactor;     // Calculated by EDF-VD algorithm, aim to reduce HI level tasks' deadline
 
-    TaskSet(std::vector<Task>& list);
+    TaskSet(const std::vector<Task>& list);
 
 private:
-    void ComputeUtilization();
-    void ComputeVirtualDeadline();
+    void compute_utilization();
+    void compute_virtual_deadline();
 };
 
 #endif

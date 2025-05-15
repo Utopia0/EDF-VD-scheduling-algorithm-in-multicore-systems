@@ -21,8 +21,14 @@
     <ClInclude Include="include\task.h">
       <Filter>include</Filter>
     </ClInclude>
-    <ClInclude Include="src\globals.h">
-      <Filter>src</Filter>
+    <ClInclude Include="include\testset.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\function.h">
+      <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\globals.h">
+      <Filter>include</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -33,6 +39,12 @@
       <Filter>src</Filter>
     </ClCompile>
     <ClCompile Include="src\task.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\testset.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\function.cpp">
       <Filter>src</Filter>
     </ClCompile>
   </ItemGroup>
